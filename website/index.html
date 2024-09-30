@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>go2rtc - WebTorrent</title>
+    <style>
+        body {
+            background-color: black;
+            margin: 0;
+            padding: 0;
+        }
+
+        html, body, video {
+            height: 100%;
+            width: 100%;
+        }
+
+        div {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            display: flex;
+            flex-direction: column;
+            transform: translateX(-50%) translateY(-50%);
+        }
+    </style>
+</head>
+<body>
+<video id="video" autoplay controls playsinline muted></video>
+<div id="login">
+    <input id="share" type="text" placeholder="share">
+    <input id="pwd" type="text" placeholder="password">
+    <button id="connect">connect</button>
+</div>
+<script>
+    function decode(buffer) {
+        return String.fromCharCode(...new Uint8Array(buffer))
+    }
+
+    function encode(string) {
+        return Uint8Array.from(string, c => c.charCodeAt(0))
+    }
+
+    async function cipher(share, pwd) {
+        const hash = await crypto.subtle.digest('SHA-256', encode(share))
+        const nonce = (Date.now() * 1000000).toString(36)
+
+        const ivData = await crypto.subtle.digest('SHA-256', encode(share + ':' + nonce))
+        const keyData = await crypto.subtle.digest('SHA-256', encode(nonce + ':' + pwd))
+        const key = await crypto.subtle.importKey(
+            'raw', keyData, {name: 'AES-GCM'}, false, ['encrypt', 'decrypt'],
+        )
+
+        return {
+            hash: btoa(decode(hash)),
+            nonce: nonce,
+            encrypt: async function (plaintext) {
+                const cryptotext = await crypto.subtle.encrypt(
+                    {name: 'AES-GCM', iv: ivData.slice(0, 12), additionalData: encode(nonce)},
+                    key, encode(plaintext),
+                )
+                return btoa(decode(cryptotext))
+            },
+            decrypt: async function (cryptotext) {
+                const plaintext = await crypto.subtle.decrypt(
+                    {name: 'AES-GCM', iv: ivData.slice(0, 12), additionalData: encode(nonce)},
+                    key, encode(atob(cryptotext)),
+                )
+                return decode(plaintext)
+            }
+        }
+    }
+</script>
+</body>
+</html>
